@@ -64,7 +64,7 @@ defmodule TestcontainersElixir.MixProject do
       {:mongodb_driver, "~> 1.6.2", only: [:dev, :test]},
       # redis
       {:redix, "~> 1.0", only: [:dev, :test]},
-      # ceph and minio
+      # ceph and ministack
       {:ex_aws, "~> 2.1", only: [:dev, :test]},
       {:ex_aws_s3, "~> 2.0", only: [:dev, :test]},
       {:sweet_xml, "~> 0.6", only: [:dev, :test]},
