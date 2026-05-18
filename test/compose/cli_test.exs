@@ -12,6 +12,13 @@ defmodule Testcontainers.Compose.CliTest do
       assert args == ["compose", "-p", "tc-test123", "up", "-d", "--wait"]
     end
 
+    test "can omit --wait for compose providers that do not support it" do
+      compose = DockerCompose.new("/tmp/test") |> Map.put(:project_name, "tc-test123")
+      args = Cli.build_up_args(compose, false)
+
+      assert args == ["compose", "-p", "tc-test123", "up", "-d"]
+    end
+
     test "includes --build when build is true" do
       compose =
         DockerCompose.new("/tmp/test")
@@ -181,6 +188,39 @@ defmodule Testcontainers.Compose.CliTest do
       assert length(result) == 2
     end
 
+    test "parses pretty podman-compose JSON array output" do
+      output = """
+      \e[4m>>>> Executing external compose provider "/run/current-system/sw/bin/podman-compose". <<<<
+
+      \e[0m[
+        {
+          "Id": "abc123",
+          "Labels": {
+            "com.docker.compose.service": "redis"
+          },
+          "Ports": [
+            {
+              "container_port": 6379,
+              "host_port": 32768,
+              "protocol": "tcp"
+            }
+          ],
+          "State": "running"
+        }
+      ]
+      """
+
+      [entry] = Cli.parse_ps_output(output)
+
+      assert entry["ID"] == "abc123"
+      assert entry["Service"] == "redis"
+      assert entry["State"] == "running"
+
+      assert entry["Publishers"] == [
+               %{"TargetPort" => 6379, "PublishedPort" => 32768, "Protocol" => "tcp"}
+             ]
+    end
+
     test "handles empty output" do
       assert Cli.parse_ps_output("") == []
     end
@@ -188,6 +228,16 @@ defmodule Testcontainers.Compose.CliTest do
     test "skips invalid JSON lines" do
       output =
         ~s|not json\n{"ID":"abc123","Service":"redis","State":"running","Publishers":[]}|
+
+      result = Cli.parse_ps_output(output)
+
+      assert length(result) == 1
+      assert Enum.at(result, 0)["Service"] == "redis"
+    end
+
+    test "skips valid JSON values that are not compose entries" do
+      output =
+        ~s|"redis-server"\n{"ID":"abc123","Service":"redis","State":"running","Publishers":[]}|
 
       result = Cli.parse_ps_output(output)
 

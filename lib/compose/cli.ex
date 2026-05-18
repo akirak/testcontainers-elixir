@@ -15,7 +15,7 @@ defmodule Testcontainers.Compose.Cli do
 
     case execute(compose, args) do
       {_output, 0} -> :ok
-      {output, exit_code} -> {:error, {:compose_up_failed, exit_code, output}}
+      {output, exit_code} -> handle_up_error(compose, output, exit_code)
     end
   end
 
@@ -72,8 +72,10 @@ defmodule Testcontainers.Compose.Cli do
   @doc """
   Builds the argument list for `docker compose up`.
   """
-  def build_up_args(%DockerCompose{} = compose) do
-    base_args(compose) ++ ["up", "-d", "--wait"] ++ build_args(compose) ++ compose.services
+  def build_up_args(%DockerCompose{} = compose, wait \\ true) when is_boolean(wait) do
+    wait_args = if wait, do: ["--wait"], else: []
+
+    base_args(compose) ++ ["up", "-d"] ++ wait_args ++ build_args(compose) ++ compose.services
   end
 
   @doc """
@@ -116,21 +118,22 @@ defmodule Testcontainers.Compose.Cli do
   Each line is a separate JSON object with fields like Service, ID, State, Publishers.
   """
   def parse_ps_output(output) when is_binary(output) do
-    output
-    |> String.trim()
-    |> String.split("\n", trim: true)
-    |> Enum.flat_map(fn line ->
-      case Jason.decode(line) do
-        {:ok, %{} = parsed} ->
-          [parsed]
+    output = strip_ansi(output)
 
-        {:ok, list} when is_list(list) ->
-          list
+    case decode_ps_json(output) do
+      {:ok, entries} ->
+        entries
 
-        {:error, _} ->
-          []
-      end
-    end)
+      :error ->
+        output
+        |> String.trim()
+        |> String.split("\n", trim: true)
+        |> Enum.flat_map(fn line ->
+          line
+          |> Jason.decode()
+          |> normalize_decoded_ps()
+        end)
+    end
   end
 
   @doc """
@@ -155,6 +158,76 @@ defmodule Testcontainers.Compose.Cli do
   end
 
   # Private functions
+
+  defp decode_ps_json(output) do
+    output
+    |> trim_before_json()
+    |> Jason.decode()
+    |> case do
+      {:ok, decoded} -> {:ok, normalize_decoded_ps({:ok, decoded})}
+      {:error, _} -> :error
+    end
+  end
+
+  defp normalize_decoded_ps({:ok, %{} = parsed}), do: [normalize_ps_entry(parsed)]
+
+  defp normalize_decoded_ps({:ok, list}) when is_list(list) do
+    Enum.flat_map(list, fn
+      %{} = entry -> [normalize_ps_entry(entry)]
+      _ -> []
+    end)
+  end
+
+  defp normalize_decoded_ps(_), do: []
+
+  defp normalize_ps_entry(%{} = entry) do
+    entry
+    |> Map.put_new("ID", Map.get(entry, "Id", ""))
+    |> Map.put_new("Service", service_name(entry))
+    |> Map.put_new("Publishers", publishers(entry))
+  end
+
+  defp service_name(entry) do
+    labels = Map.get(entry, "Labels", %{})
+
+    Map.get(labels, "com.docker.compose.service") ||
+      Map.get(labels, "io.podman.compose.service") ||
+      ""
+  end
+
+  defp publishers(entry) do
+    entry
+    |> Map.get("Ports", [])
+    |> Enum.map(fn port ->
+      %{
+        "TargetPort" => Map.get(port, "container_port", 0),
+        "PublishedPort" => Map.get(port, "host_port", 0),
+        "Protocol" => Map.get(port, "protocol", "tcp")
+      }
+    end)
+  end
+
+  defp strip_ansi(output) do
+    Regex.replace(~r/\e\[[0-9;]*[[:alpha:]]/, output, "")
+  end
+
+  defp trim_before_json(output) do
+    case json_start(output) do
+      nil -> output
+      index -> binary_part(output, index, byte_size(output) - index)
+    end
+  end
+
+  defp json_start(output) do
+    ["{", "["]
+    |> Enum.flat_map(fn token ->
+      case :binary.match(output, token) do
+        {index, 1} -> [index]
+        :nomatch -> []
+      end
+    end)
+    |> Enum.min(fn -> nil end)
+  end
 
   defp base_args(%DockerCompose{} = compose) do
     args = ["compose"]
@@ -191,6 +264,28 @@ defmodule Testcontainers.Compose.Cli do
       :never -> args ++ ["--pull", "never"]
       :missing -> args
     end
+  end
+
+  defp up_without_wait(%DockerCompose{} = compose) do
+    args = build_up_args(compose, false)
+
+    case execute(compose, args) do
+      {_output, 0} -> :ok
+      {output, exit_code} -> {:error, {:compose_up_failed, exit_code, output}}
+    end
+  end
+
+  defp handle_up_error(%DockerCompose{} = compose, output, exit_code) do
+    if is_unsupported_wait_option?(output) do
+      up_without_wait(compose)
+    else
+      {:error, {:compose_up_failed, exit_code, output}}
+    end
+  end
+
+  defp is_unsupported_wait_option?(output) when is_binary(output) do
+    String.contains?(output, "unrecognized arguments: --wait") or
+      String.contains?(output, "unknown flag: --wait")
   end
 
   defp execute(%DockerCompose{} = compose, args) do
