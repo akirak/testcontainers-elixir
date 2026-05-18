@@ -34,7 +34,7 @@ defmodule Testcontainers.KafkaContainer do
   alias Testcontainers.Container
   alias Testcontainers.Docker
   alias Testcontainers.KafkaContainer
-  alias Testcontainers.LogWaitStrategy
+  alias Testcontainers.PortWaitStrategy
 
   @default_image "apache/kafka"
   @default_tag "3.9.0"
@@ -181,8 +181,9 @@ defmodule Testcontainers.KafkaContainer do
       |> with_kraft_config(config, host)
       |> with_reuse(config.reuse)
       |> with_waiting_strategy(
-        LogWaitStrategy.new(
-          ~r/Kafka Server started/,
+        PortWaitStrategy.new(
+          host,
+          config.internal_kafka_port,
           config.wait_timeout,
           1000
         )
@@ -206,6 +207,7 @@ defmodule Testcontainers.KafkaContainer do
     defp with_kraft_config(container, config, host) do
       container
       |> with_environment(:KAFKA_NODE_ID, "#{config.node_id}")
+      |> with_environment(:KAFKA_CLUSTER_ID, config.cluster_id)
       |> with_environment(:KAFKA_PROCESS_ROLES, "broker,controller")
       |> with_environment(:KAFKA_CONTROLLER_LISTENER_NAMES, "CONTROLLER")
       |> with_environment(:KAFKA_INTER_BROKER_LISTENER_NAME, "PLAINTEXT")

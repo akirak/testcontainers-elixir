@@ -7,7 +7,8 @@ defmodule Testcontainers.CephContainer do
   alias Testcontainers.CephContainer
   alias Testcontainers.Container
   alias Testcontainers.ContainerBuilder
-  alias Testcontainers.LogWaitStrategy
+  alias Testcontainers.HttpWaitStrategy
+  alias Testcontainers.PortWaitStrategy
 
   import Testcontainers.Container, only: [is_valid_image: 1]
 
@@ -236,6 +237,7 @@ defmodule Testcontainers.CephContainer do
     @impl true
     def build(%CephContainer{} = config) do
       new(config.image)
+      |> with_privileged(true)
       |> with_exposed_port(config.port)
       |> with_environment(:CEPH_DEMO_UID, "demo")
       |> with_environment(:CEPH_DEMO_BUCKET, config.bucket)
@@ -245,11 +247,10 @@ defmodule Testcontainers.CephContainer do
       |> with_environment(:MON_IP, "127.0.0.1")
       |> with_environment(:RGW_NAME, "localhost")
       |> with_waiting_strategy(
-        LogWaitStrategy.new(
-          ~r/.*Bucket 's3:\/\/#{config.bucket}\/' created.*/,
-          config.wait_timeout,
-          5000
-        )
+        PortWaitStrategy.new("127.0.0.1", config.port, config.wait_timeout, 5000)
+      )
+      |> with_waiting_strategy(
+        HttpWaitStrategy.new("/", config.port, timeout: config.wait_timeout)
       )
       |> with_check_image(config.check_image)
       |> with_reuse(config.reuse)

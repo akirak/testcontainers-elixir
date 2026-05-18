@@ -7,10 +7,11 @@ defmodule Testcontainers.MySqlContainer do
   Provides functionality for creating and managing MySQL container configurations.
   """
 
+  alias Testcontainers.CommandWaitStrategy
   alias Testcontainers.Container
   alias Testcontainers.ContainerBuilder
-  alias Testcontainers.LogWaitStrategy
   alias Testcontainers.MySqlContainer
+  alias Testcontainers.PortWaitStrategy
 
   import Testcontainers.Container, only: [is_valid_image: 1]
 
@@ -224,7 +225,17 @@ defmodule Testcontainers.MySqlContainer do
       |> then(MySqlContainer.container_volume_fun(config.persistent_volume))
       |> with_environment(:MYSQL_RANDOM_ROOT_PASSWORD, "yes")
       |> with_waiting_strategy(
-        LogWaitStrategy.new(~r/.*port: 3306  MySQL Community Server.*/, config.wait_timeout)
+        PortWaitStrategy.new(
+          Testcontainers.get_host(),
+          MySqlContainer.default_port(),
+          config.wait_timeout
+        )
+      )
+      |> with_waiting_strategy(
+        CommandWaitStrategy.new(
+          ["mysqladmin", "ping", "-h", "127.0.0.1", "-u", config.user, "-p#{config.password}"],
+          config.wait_timeout
+        )
       )
       |> with_check_image(config.check_image)
       |> with_reuse(config.reuse)
