@@ -31,6 +31,7 @@ defmodule Testcontainers.KafkaContainer do
   If you need to use a specific port, you can set it with `with_kafka_port/2`.
   """
 
+  alias Testcontainers.CommandWaitStrategy
   alias Testcontainers.Container
   alias Testcontainers.Docker
   alias Testcontainers.KafkaContainer
@@ -180,6 +181,17 @@ defmodule Testcontainers.KafkaContainer do
       |> with_fixed_port(config.internal_kafka_port, config.kafka_port)
       |> with_kraft_config(config, host)
       |> with_reuse(config.reuse)
+      |> with_waiting_strategy(
+        CommandWaitStrategy.new(
+          [
+            "/opt/kafka/bin/kafka-broker-api-versions.sh",
+            "--bootstrap-server",
+            "localhost:#{config.internal_kafka_port}"
+          ],
+          config.wait_timeout,
+          1000
+        )
+      )
       |> with_waiting_strategy(
         PortWaitStrategy.new(
           host,
