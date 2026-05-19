@@ -217,7 +217,7 @@ defmodule Testcontainers.Compose.CliTest do
       assert entry["State"] == "running"
 
       assert entry["Publishers"] == [
-               %{"TargetPort" => 6379, "PublishedPort" => 32768, "Protocol" => "tcp"}
+               %{"TargetPort" => 6379, "PublishedPort" => 32_768, "Protocol" => "tcp"}
              ]
     end
 
