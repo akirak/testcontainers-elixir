@@ -74,23 +74,9 @@ defmodule Testcontainers.HttpWaitStrategy do
 
     @impl true
     def wait_until_container_is_ready(wait_strategy, container, _conn) do
-      client = build_request(wait_strategy, container)
-
-      raw_response =
-        Tesla.request(client,
-          url: wait_strategy.endpoint,
-          method: wait_strategy.method,
-          headers: wait_strategy.headers
-        )
-
-      with {:ok, response} <- validate_response(raw_response),
-           :ok <- verify_status_code(wait_strategy, response),
-           :ok <- verify_match(wait_strategy, response) do
-        :ok
-      else
-        {:error, reason} ->
-          {:error, reason, wait_strategy}
-      end
+      wait_strategy
+      |> build_request(container)
+      |> request_until_ready(wait_strategy, started_at())
     end
 
     # Response evaluation
@@ -124,19 +110,11 @@ defmodule Testcontainers.HttpWaitStrategy do
 
     defp build_request(wait_strategy, container) do
       base_url = get_base_url(wait_strategy, container)
-      request_timeout = round(wait_strategy.timeout / wait_strategy.max_retries)
+      request_timeout = request_timeout(wait_strategy)
 
       Tesla.client([
         {Tesla.Middleware.BaseUrl, base_url: base_url},
-        {Tesla.Middleware.Timeout, timeout: request_timeout},
-        {Tesla.Middleware.Retry,
-         delay: 500,
-         max_retries: wait_strategy.max_retries,
-         max_delay: 5_000,
-         should_retry: fn
-           {:ok, _response}, _env, _context -> false
-           {:error, _reason}, _env, _context -> true
-         end}
+        {Tesla.Middleware.Timeout, timeout: request_timeout}
       ])
     end
 
@@ -145,5 +123,60 @@ defmodule Testcontainers.HttpWaitStrategy do
 
       "#{wait_strategy.protocol}://#{Testcontainers.get_host(container)}:#{port}/"
     end
+
+    defp request_timeout(%HttpWaitStrategy{timeout: timeout, max_retries: max_retries})
+         when max_retries > 0 do
+      timeout
+      |> div(max_retries)
+      |> max(1)
+    end
+
+    defp request_until_ready(client, wait_strategy, started_at) do
+      case request_and_verify(client, wait_strategy) do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          maybe_retry(client, wait_strategy, started_at, reason)
+      end
+    end
+
+    defp request_and_verify(client, wait_strategy) do
+      raw_response =
+        Tesla.request(client,
+          url: wait_strategy.endpoint,
+          method: wait_strategy.method,
+          headers: wait_strategy.headers
+        )
+
+      with {:ok, response} <- validate_response(raw_response),
+           :ok <- verify_status_code(wait_strategy, response) do
+        verify_match(wait_strategy, response)
+      end
+    end
+
+    defp maybe_retry(client, wait_strategy, started_at, reason) do
+      if timed_out?(started_at, wait_strategy.timeout) do
+        {:error, reason, wait_strategy}
+      else
+        :timer.sleep(retry_delay(wait_strategy, started_at))
+        request_until_ready(client, wait_strategy, started_at)
+      end
+    end
+
+    defp retry_delay(wait_strategy, started_at) do
+      wait_strategy.timeout
+      |> remaining_timeout(started_at)
+      |> min(500)
+      |> max(0)
+    end
+
+    defp timed_out?(started_at, timeout), do: elapsed_time(started_at) >= timeout
+
+    defp remaining_timeout(timeout, started_at), do: timeout - elapsed_time(started_at)
+
+    defp elapsed_time(started_at), do: System.monotonic_time(:millisecond) - started_at
+
+    defp started_at, do: System.monotonic_time(:millisecond)
   end
 end
