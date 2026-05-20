@@ -32,4 +32,25 @@ defmodule Testcontainers.ContainerBuilderHelperTest do
     assert Map.get(built.labels, container_lang_label()) == container_lang_value()
     assert Map.get(built.labels, container_label()) == "true"
   end
+
+  test "build/2 applies podman log driver from properties" do
+    builder = Testcontainers.Container.new("redis:7")
+
+    state = %{properties: %{"podman.log.driver" => "k8s-file"}, session_id: "123"}
+    {:noreuse, built, nil} = ContainerBuilderHelper.build(builder, state)
+
+    assert built.log_driver == "k8s-file"
+    assert built.log_options == %{}
+  end
+
+  test "build/2 does not override a container log driver" do
+    builder =
+      Testcontainers.Container.new("redis:7")
+      |> Testcontainers.Container.with_log_driver("json-file")
+
+    state = %{properties: %{"podman.log.driver" => "k8s-file"}, session_id: "123"}
+    {:noreuse, built, nil} = ContainerBuilderHelper.build(builder, state)
+
+    assert built.log_driver == "json-file"
+  end
 end

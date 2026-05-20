@@ -7,6 +7,7 @@ defmodule Testcontainers.Docker.Api do
   alias DockerEngineAPI.Api
   alias DockerEngineAPI.Model.ExecConfig
   alias DockerEngineAPI.Model.HostConfig
+  alias DockerEngineAPI.Model.HostConfigAllOfLogConfig
   alias Testcontainers.Container
 
   def get_container(container_id, conn)
@@ -90,7 +91,7 @@ defmodule Testcontainers.Docker.Api do
   def create_container(%Container{} = container, conn) do
     opts = if container.name, do: [name: container.name], else: []
 
-    case Api.Container.container_create(conn, container_create_request(container), opts) do
+    case Api.Container.container_create(conn, build_container_create_request(container), opts) do
       {:error, %Tesla.Env{status: other}} ->
         {:error, {:http_error, other}}
 
@@ -290,7 +291,8 @@ defmodule Testcontainers.Docker.Api do
     %{running: json."Running", exit_code: json."ExitCode"}
   end
 
-  defp container_create_request(%Container{} = container_config) do
+  @doc false
+  def build_container_create_request(%Container{} = container_config) do
     base_request = %DockerEngineAPI.Model.ContainerCreateRequest{
       Image: container_config.image,
       Cmd: container_config.cmd,
@@ -304,7 +306,8 @@ defmodule Testcontainers.Docker.Api do
         Privileged: container_config.privileged,
         Binds: map_binds(container_config),
         Mounts: map_volumes(container_config),
-        NetworkMode: container_config.network_mode || container_config.network
+        NetworkMode: container_config.network_mode || container_config.network,
+        LogConfig: map_log_config(container_config)
       }
     }
 
@@ -320,6 +323,15 @@ defmodule Testcontainers.Docker.Api do
     else
       base_request
     end
+  end
+
+  defp map_log_config(%Container{log_driver: nil}), do: nil
+
+  defp map_log_config(%Container{log_driver: driver, log_options: options}) do
+    %HostConfigAllOfLogConfig{
+      Type: driver,
+      Config: options
+    }
   end
 
   defp map_exposed_ports(%Container{} = container_config) do

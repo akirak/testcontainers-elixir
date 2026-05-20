@@ -227,6 +227,21 @@ alias Testcontainers.{Container, PullPolicy}
 
 The global default can also be set in `~/.testcontainers.properties` via `pull.policy` (`missing` — default, `always`, or `never`).
 
+### Podman log driver
+
+When Podman is configured with a log driver that is not readable through the Docker-compatible logs API, log-based wait strategies may not see container output. Set a Podman log driver globally with:
+
+```properties
+podman.log.driver=k8s-file
+```
+
+The same setting can be supplied as `TESTCONTAINERS_PODMAN_LOG_DRIVER=k8s-file`. For individual generic containers, configure the Docker/Podman log driver directly:
+
+```elixir
+Testcontainers.Container.new("redis:7")
+|> Testcontainers.Container.with_log_driver("k8s-file")
+```
+
 ### Naming containers
 
 Give a container a stable name so other containers on the same network can reference it by name:
