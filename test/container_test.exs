@@ -256,4 +256,24 @@ defmodule Testcontainers.ContainerTest do
       assert container.privileged == false
     end
   end
+
+  describe "with_log_driver/3" do
+    test "sets the container log driver" do
+      container =
+        Container.new("my-image")
+        |> Container.with_log_driver("k8s-file")
+
+      assert container.log_driver == "k8s-file"
+      assert container.log_options == %{}
+    end
+
+    test "sets log driver options" do
+      container =
+        Container.new("my-image")
+        |> Container.with_log_driver("json-file", %{"max-size" => "10m"})
+
+      assert container.log_driver == "json-file"
+      assert container.log_options == %{"max-size" => "10m"}
+    end
+  end
 end

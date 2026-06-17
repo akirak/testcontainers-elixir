@@ -33,7 +33,9 @@ defmodule Testcontainers.Container do
     name: nil,
     reuse: false,
     force_reuse: false,
-    pull_policy: nil
+    pull_policy: nil,
+    log_driver: nil,
+    log_options: nil
   ]
 
   @doc """
@@ -196,6 +198,18 @@ defmodule Testcontainers.Container do
   """
   def with_privileged(%__MODULE__{} = config, privileged) when is_boolean(privileged) do
     %__MODULE__{config | privileged: privileged}
+  end
+
+  @doc """
+  Sets the container log driver.
+
+  This maps to Docker/Podman `HostConfig.LogConfig`. It is useful with Podman
+  setups where the default log driver, such as `journald`, is not readable via
+  the Docker-compatible logs API.
+  """
+  def with_log_driver(%__MODULE__{} = config, driver, options \\ %{})
+      when is_binary(driver) and is_map(options) do
+    %__MODULE__{config | log_driver: driver, log_options: options}
   end
 
   @doc """

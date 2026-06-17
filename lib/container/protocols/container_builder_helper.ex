@@ -8,6 +8,7 @@ defmodule Testcontainers.ContainerBuilderHelper do
   def build(builder, state) when is_map(state) and is_struct(builder) do
     config =
       ContainerBuilder.build(builder)
+      |> maybe_with_podman_log_driver(state.properties)
       |> Container.with_label(container_lang_label(), container_lang_value())
       |> Container.with_label(container_label(), "#{true}")
 
@@ -30,4 +31,13 @@ defmodule Testcontainers.ContainerBuilderHelper do
       |> Kernel.then(&{:noreuse, &1, nil})
     end
   end
+
+  defp maybe_with_podman_log_driver(%Container{log_driver: nil} = config, properties) do
+    case Map.get(properties, "podman.log.driver") do
+      driver when is_binary(driver) and driver != "" -> Container.with_log_driver(config, driver)
+      _ -> config
+    end
+  end
+
+  defp maybe_with_podman_log_driver(%Container{} = config, _properties), do: config
 end

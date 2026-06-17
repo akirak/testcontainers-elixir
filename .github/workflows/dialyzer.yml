@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - main
+      - develop
 jobs:
   dialyzer:
     name: Run Dialyzer for type checking
